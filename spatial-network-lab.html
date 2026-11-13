@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Spatial & Network Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+:root{--bg:#E9EFEE;--paper:#fff;--ink:#10282F;--mut:#5B7077;--pri:#1B6B73;--line:#C9D6D5;--err:#B3261E}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.6 'IBM Plex Sans Thai',system-ui,sans-serif}
+header{padding:28px 24px 8px;max-width:1400px;margin:auto}h1{margin:0;font-size:clamp(24px,3.4vw,38px);font-weight:600;letter-spacing:-.01em}header p{margin:4px 0 0;color:var(--mut)}
+.app{display:grid;grid-template-columns:330px 1fr;gap:24px;max-width:1400px;margin:auto;padding:16px 24px 48px;align-items:start}
+@media(max-width:900px){.app{grid-template-columns:1fr}}
+.rail{position:sticky;top:12px;background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:18px}
+@media(max-width:900px){.rail{position:static}}
+.rail h3{margin:18px 0 8px;font-size:14px;font-weight:600;display:flex;gap:8px;align-items:center}.rail h3:first-child{margin-top:0}
+.rail h3 b{background:var(--ink);color:#fff;border-radius:50%;width:22px;height:22px;display:grid;place-items:center;font-size:12px}
+.btn{font:inherit;border:1px solid var(--line);background:#fff;color:var(--ink);padding:7px 12px;border-radius:6px;cursor:pointer}
+.btn:hover{border-color:var(--pri)}.btn:focus-visible,input:focus-visible{outline:2px solid var(--pri);outline-offset:2px}
+.btn.on{background:var(--pri);border-color:var(--pri);color:#fff}.btn.go{background:var(--ink);color:#fff;width:100%;padding:10px;font-weight:600;border-color:var(--ink)}
+.btn.rs{width:100%;margin-top:8px;color:var(--mut)}
+.row{display:flex;gap:6px;flex-wrap:wrap}.row .btn{flex:1}.stack .btn{width:100%;text-align:left;margin-bottom:6px}
+input[type=file]{width:100%;font:inherit;font-size:13px;margin:4px 0}input[type=number]{width:64px;font:inherit;padding:4px 6px;border:1px solid var(--line);border-radius:6px}
+.hint{font-size:12.5px;color:var(--mut);margin:4px 0 8px}#msg{font-size:13px;margin-top:8px;min-height:20px;color:var(--pri)}#msg.err{color:var(--err)}
+.empty{border:1px dashed var(--line);border-radius:10px;padding:48px 20px;text-align:center;color:var(--mut)}
+.card{background:var(--paper);border:1px solid var(--line);border-radius:10px;padding:16px;margin-bottom:18px}
+.card h2{margin:0;font-size:17px;font-weight:600}.bar{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:10px}.bar .row .btn{flex:none;font-size:13px;padding:5px 10px}
+.tw{overflow:auto;max-height:420px;border:1px solid var(--line);border-radius:6px}table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:6px 10px;text-align:right;border-bottom:1px solid #E3EAE9;white-space:nowrap}th:first-child,td:first-child{text-align:left}th{background:#F2F6F5;position:sticky;top:0}
+.note{font-size:13px;color:var(--mut);margin:10px 0 0;max-width:80ch}.interp{font-weight:500;margin:0 0 10px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:16px}@media(max-width:560px){.grid{grid-template-columns:1fr}}
+.cv{position:relative;height:360px}
+</style></head><body>
+<header><h1 data-t="title"></h1><p data-t="sub"></p></header>
+<div class="app">
+<aside class="rail">
+ <h3><b>1</b><span data-t="s1"></span></h3>
+ <div class="stack"><button class="btn" id="m_spatial" onclick="setM('spatial')" data-t="spatial"></button><button class="btn" id="m_network" onclick="setM('network')" data-t="network"></button></div>
+ <h3><b>2</b><span data-t="s2"></span></h3>
+ <div class="row"><button class="btn" id="l_th" onclick="setL('th')">ไทย</button><button class="btn" id="l_en" onclick="setL('en')">English</button></div>
+ <h3><b>3</b><span data-t="s3"></span></h3>
+ <input type="file" id="file" accept=".xlsx,.xls,.csv" onchange="upload(this.files[0])">
+ <div class="hint" id="hint"></div>
+ <div id="kbox" class="hint"><span data-t="kLabel"></span> <input type="number" id="k" value="4" min="1" max="20"></div>
+ <button class="btn" style="width:100%" onclick="demo()" data-t="demo"></button>
+ <h3><b>4</b><span data-t="s4"></span></h3>
+ <button class="btn go" onclick="run()" data-t="run"></button>
+ <button class="btn rs" onclick="resetAll()" data-t="reset"></button>
+ <div id="msg"></div>
+</aside>
+<main id="res"></main>
+</div>
+<script>
+const $=s=>document.querySelector(s);
+let lang='th',method='spatial',data=null,res=null,charts={},open={sum:true,det:false},shown={},nums={},msgF=()=>'';
+const TX={th:{title:'ห้องปฏิบัติการสถิติเชิงพื้นที่และเครือข่าย',sub:'วิเคราะห์ข้อมูลเศรษฐศาสตร์การเมืองจากไฟล์ Excel ได้ในหน้าเดียว',s1:'เลือกวิธีวิเคราะห์',s2:'ภาษาที่นำเสนอ',s3:'ข้อมูล',s4:'ประมวลผล',spatial:'สถิติเชิงพื้นที่ (Spatial)',network:'การวิเคราะห์เครือข่าย (Network)',kLabel:'จำนวนเพื่อนบ้านใกล้สุด (k):',demo:'ทดลองด้วยข้อมูลตัวอย่าง',run:'ประมวลผลข้อมูล',reset:'รีเซ็ตหน้า',
+hintS:'ไฟล์ .xlsx/.xls/.csv คอลัมน์: id, x (ลองจิจูด), y (ละติจูด), value (ตัวแปรที่สนใจ)',hintN:'ไฟล์ .xlsx/.xls/.csv คอลัมน์: source, target, weight (ไม่บังคับ) หนึ่งแถวคือหนึ่งความสัมพันธ์',loaded:'โหลดข้อมูลแล้ว',rows:'แถว',busy:'กำลังประมวลผล…',nodata:'ยังไม่มีข้อมูล: แนบไฟล์ Excel หรือกดทดลองด้วยข้อมูลตัวอย่าง',err:'เกิดข้อผิดพลาด: ',bad:'อ่านคอลัมน์ไม่ได้ ตรวจชื่อคอลัมน์ให้ตรงตามคำแนะนำ',small:'ข้อมูลน้อยเกินไปสำหรับการคำนวณ',
+empty:'แนบไฟล์หรือกดทดลองข้อมูล แล้วกด “ประมวลผลข้อมูล” ผลลัพธ์จะแสดงที่นี่',tabSum:'ตารางสรุปค่าสถิติ',tabDet:'ตารางค่าสถิติโดยละเอียด',show:'แสดงตารางโดยละเอียด',hide:'ซ่อนตาราง',xlsx:'ดาวน์โหลด Excel',png:'ดาวน์โหลด PNG',nums:'แสดงตัวเลข',nonums:'ซ่อนตัวเลข',charts:'เลือกกราฟที่ต้องการแสดง',note:'คำอธิบาย: ',
+i_pos:'พบการกระจุกตัวเชิงพื้นที่เชิงบวกอย่างมีนัยสำคัญ (ค่าใกล้เคียงกันอยู่ติดกัน)',i_neg:'พบรูปแบบสลับเชิงพื้นที่อย่างมีนัยสำคัญ (ค่าต่างกันอยู่ติดกัน)',i_ns:'ไม่พบสหสัมพันธ์เชิงพื้นที่อย่างมีนัยสำคัญที่ระดับ 5%',
+c_stat:'สถิติ',c_value:'ค่า',c_expected:'ค่าคาดหวัง',c_permMean:'ค่าเฉลี่ย permutation',c_permSd:'SD permutation',c_z:'ค่า z',c_p:'ค่า p',c_id:'รหัส',c_x:'x',c_y:'y',c_val:'ค่าตัวแปร',c_zval:'ค่ามาตรฐาน',c_lag:'ค่าเฉลี่ยเพื่อนบ้าน',c_li:'Local I',c_quad:'กลุ่ม',c_pLocal:'ค่า p',c_deg:'Degree',c_str:'Strength',c_clo:'Closeness',c_bet:'Betweenness',c_eig:'Eigenvector',c_clu:'Clustering',c_comp:'ส่วนประกอบ',
+m_moran:'Moran’s I',m_geary:'Geary’s C',m_n:'จำนวนโหนด',m_m:'จำนวนเส้นเชื่อม',m_dens:'ความหนาแน่น (Density)',m_avgdeg:'Degree เฉลี่ย',m_comps:'จำนวนส่วนประกอบเชื่อมต่อ',m_large:'ขนาดส่วนประกอบใหญ่สุด',m_apl:'ระยะทางสั้นสุดเฉลี่ย',m_diam:'เส้นผ่านศูนย์กลาง (Diameter)',m_avgclu:'Clustering เฉลี่ย',m_trans:'Transitivity',
+ex_sg:'Moran’s I สูงกว่าค่าคาดหวัง −1/(n−1) แปลว่าค่าสูงอยู่ใกล้ค่าสูง ค่าต่ำอยู่ใกล้ค่าต่ำ ส่วน Geary’s C ต่ำกว่า 1 แปลว่าสหสัมพันธ์เชิงบวก ค่า p มาจาก permutation 499 รอบ (สองด้าน) น้ำหนักเชิงพื้นที่ใช้ k เพื่อนบ้านใกล้สุดแบบ row-standardized',
+ex_sl:'ค่ามาตรฐาน = ค่าลบค่าเฉลี่ย หารด้วย SD ส่วนค่าเฉลี่ยเพื่อนบ้านคือค่าเฉลี่ยของ k จุดใกล้สุด Local I (LISA) วัดว่าแต่ละจุดคล้ายเพื่อนบ้านเพียงใด กลุ่ม HH = hot spot, LL = cold spot, LH/HL = outlier เชิงพื้นที่ จัดกลุ่มเฉพาะเมื่อ p < 0.05 (conditional permutation 199 รอบ) มิฉะนั้นเป็น NS',
+ex_ng:'Density คือสัดส่วนเส้นเชื่อมที่เกิดขึ้นจริงต่อที่เป็นไปได้ Transitivity คือสัดส่วนของสามเหลี่ยมที่ปิด ค่าทั้งหมดคำนวณโดยถือว่าเครือข่ายไม่มีทิศทาง และรวมน้ำหนักกรณีมีเส้นซ้ำ',
+ex_nn:'Degree = จำนวนเพื่อนบ้าน, Strength = ผลรวมน้ำหนัก, Closeness = ความใกล้ชิดกับโหนดอื่น (ปรับตามส่วนประกอบ), Betweenness = การเป็นสะพานบนเส้นทางสั้นสุด (0–1), Eigenvector = เชื่อมกับโหนดสำคัญ (สเกลให้สูงสุด = 1), Clustering = สัดส่วนเพื่อนบ้านที่เชื่อมถึงกันเอง',
+ch_moran:'Moran scatterplot',ch_map:'แผนที่จุดตามค่าตัวแปร',ch_lisa:'แผนที่กลุ่ม LISA',ch_hist:'ฮิสโตแกรมของตัวแปร',ch_perm:'การแจกแจง permutation ของ Moran’s I',ch_pie:'สัดส่วนกลุ่ม LISA',
+ch_graph:'แผนภาพเครือข่าย',ch_deg:'การแจกแจง Degree',ch_topb:'Betweenness สูงสุด 10 อันดับ',ch_topc:'Closeness สูงสุด 10 อันดับ',ch_scat:'Degree เทียบ Betweenness',ch_radar:'โปรไฟล์ศูนย์กลาง 5 โหนดแรก'},
+en:{title:'Spatial & Network Statistics Lab',sub:'Analyse political-economy data from Excel files on a single page',s1:'Choose analysis',s2:'Language',s3:'Data',s4:'Process',spatial:'Spatial statistics',network:'Network analysis',kLabel:'Nearest neighbours (k):',demo:'Try sample data',run:'Process data',reset:'Reset page',
+hintS:'.xlsx/.xls/.csv with columns: id, x (longitude), y (latitude), value (variable of interest)',hintN:'.xlsx/.xls/.csv with columns: source, target, weight (optional). One row per tie',loaded:'Data loaded',rows:'rows',busy:'Processing…',nodata:'No data yet: attach an Excel file or try the sample data',err:'Error: ',bad:'Cannot read columns. Check the column names against the hint',small:'Too little data to compute',
+empty:'Attach a file or try the sample data, then press “Process data”. Results appear here.',tabSum:'Summary statistics table',tabDet:'Detailed statistics table',show:'Show detailed table',hide:'Hide table',xlsx:'Download Excel',png:'Download PNG',nums:'Show numbers',nonums:'Hide numbers',charts:'Choose charts to display',note:'Note: ',
+i_pos:'Significant positive spatial clustering (similar values sit together)',i_neg:'Significant spatial dispersion (dissimilar values sit together)',i_ns:'No significant spatial autocorrelation at the 5% level',
+c_stat:'Statistic',c_value:'Value',c_expected:'Expected',c_permMean:'Permutation mean',c_permSd:'Permutation SD',c_z:'z',c_p:'p-value',c_id:'ID',c_x:'x',c_y:'y',c_val:'Value',c_zval:'Standardised value',c_lag:'Neighbour mean',c_li:'Local I',c_quad:'Cluster',c_pLocal:'p-value',c_deg:'Degree',c_str:'Strength',c_clo:'Closeness',c_bet:'Betweenness',c_eig:'Eigenvector',c_clu:'Clustering',c_comp:'Component',
+m_moran:'Moran’s I',m_geary:'Geary’s C',m_n:'Nodes',m_m:'Edges',m_dens:'Density',m_avgdeg:'Average degree',m_comps:'Connected components',m_large:'Largest component size',m_apl:'Average shortest path',m_diam:'Diameter',m_avgclu:'Average clustering',m_trans:'Transitivity',
+ex_sg:'Moran’s I above the expected value −1/(n−1) means high values sit near high and low near low. Geary’s C below 1 indicates positive autocorrelation. p-values come from 499 permutations (two-sided). Spatial weights: k nearest neighbours, row-standardised.',
+ex_sl:'Standardised value = (value − mean) / SD; neighbour mean is the average over the k nearest points. Local I (LISA) shows how similar each point is to its neighbours. HH = hot spot, LL = cold spot, LH/HL = spatial outliers. Clusters are assigned only when p < 0.05 (conditional permutation, 199 runs); otherwise NS.',
+ex_ng:'Density is the share of possible ties that exist. Transitivity is the share of closed triangles. All measures treat the network as undirected and sum weights of repeated ties.',
+ex_nn:'Degree = number of neighbours, Strength = sum of weights, Closeness = nearness to other nodes (component-adjusted), Betweenness = bridging role on shortest paths (0–1), Eigenvector = ties to well-connected nodes (max = 1), Clustering = share of neighbours that are tied to each other.',
+ch_moran:'Moran scatterplot',ch_map:'Point map by value',ch_lisa:'LISA cluster map',ch_hist:'Histogram of the variable',ch_perm:'Permutation distribution of Moran’s I',ch_pie:'LISA cluster shares',
+ch_graph:'Network diagram',ch_deg:'Degree distribution',ch_topb:'Top 10 betweenness',ch_topc:'Top 10 closeness',ch_scat:'Degree vs betweenness',ch_radar:'Centrality profile of top 5 nodes'}};
+const t=k=>TX[lang][k]??k;
+const SP=['moran','map','lisa','hist','perm','pie'],NW=['graph','deg','topb','topc','scat','radar'];
+const COL={HH:'#C8553D',LL:'#2F6DB5',LH:'#8FB8DE',HL:'#E8A07F',NS:'#B7C2C4'},CP=['#1B6B73','#C8553D','#2F6DB5','#E0A526','#7A5BA6','#4E9F5D','#B25D8C','#6B7B83'];
+
+/* ---------- Chart.js plugins ---------- */
+Chart.defaults.animation=false;Chart.defaults.font.family="'IBM Plex Sans Thai',sans-serif";Chart.defaults.color='#10282F';
+Chart.register({id:'bg',beforeDraw(c){const x=c.ctx;x.save();x.globalCompositeOperation='destination-over';x.fillStyle='#fff';x.fillRect(0,0,c.width,c.height);x.restore()}},
+{id:'nums',afterDatasetsDraw(c){if(!c.options.showNums)return;const x=c.ctx;x.save();x.font='11px IBM Plex Sans Thai,sans-serif';x.fillStyle='#10282F';x.textAlign='center';
+ c.data.datasets.forEach((ds,di)=>{if(ds.noNums)return;c.getDatasetMeta(di).data.forEach((el,i)=>{let v=ds.lbl?ds.lbl[i]:ds.data[i];if(v==null||typeof v==='object')return;const p=el.tooltipPosition?el.tooltipPosition():{x:el.x,y:el.y};x.fillText(typeof v==='number'?+v.toFixed(3):v,p.x,p.y-8)})});x.restore()}},
+{id:'edges',beforeDatasetsDraw(c){if(c.canvas.id!=='cv_graph'||!res||!res.edges)return;const x=c.ctx,sx=c.scales.x,sy=c.scales.y,X=res.X;x.save();x.strokeStyle='rgba(16,40,47,.28)';
+ res.edges.forEach(([a,b,w])=>{x.lineWidth=.6+Math.min(w,8)*.3;x.beginPath();x.moveTo(sx.getPixelForValue(X[a][0]),sy.getPixelForValue(X[a][1]));x.lineTo(sx.getPixelForValue(X[b][0]),sy.getPixelForValue(X[b][1]));x.stroke()});x.restore()}});
+
+/* ---------- Spatial statistics ---------- */
+function spatial(d,k){const n=d.length;if(n<k+2)throw new Error(t('small'));
+ const NB=d.map((p,i)=>d.map((q,j)=>[j,Math.hypot(p.x-q.x,p.y-q.y)]).filter(a=>a[0]!==i).sort((a,b)=>a[1]-b[1]).slice(0,k).map(a=>a[0]));
+ const v=d.map(p=>p.value),mean=v.reduce((a,b)=>a+b,0)/n,z=v.map(a=>a-mean),m2=z.reduce((a,b)=>a+b*b,0)/n;if(m2===0)throw new Error('variance = 0');
+ const lagF=zz=>zz.map((_,i)=>NB[i].reduce((s,j)=>s+zz[j],0)/k);
+ const moran=zz=>{const l=lagF(zz);return zz.reduce((s,a,i)=>s+a*l[i],0)/(m2*n)};
+ const geary=vv=>{let s=0;vv.forEach((a,i)=>NB[i].forEach(j=>s+=(a-vv[j])**2/k));return(n-1)/(2*n)*s/(m2*n)};
+ const sh=a=>{a=a.slice();for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+ const I=moran(z),C=geary(v),PI=[],PC=[];for(let r=0;r<499;r++){const s=sh(v);PI.push(moran(s.map(a=>a-mean)));PC.push(geary(s))}
+ const st=(a,o)=>{const m=a.reduce((x,y)=>x+y,0)/a.length,sd=Math.sqrt(a.reduce((x,y)=>x+(y-m)**2,0)/a.length);return{m,sd,z:(o-m)/sd,p:(a.filter(b=>Math.abs(b-m)>=Math.abs(o-m)).length+1)/(a.length+1)}};
+ const sI=st(PI,I),sC=st(PC,C),lag=lagF(z);
+ const loc=d.map((p,i)=>{const li=z[i]/m2*lag[i];let c=0;for(let r=0;r<199;r++){const S=new Set();while(S.size<k){const j=Math.random()*n|0;if(j!==i)S.add(j)}let s=0;S.forEach(j=>s+=z[j]);if(Math.abs(z[i]/m2*s/k)>=Math.abs(li))c++}
+  const pv=(c+1)/200,q=z[i]>=0?(lag[i]>=0?'HH':'HL'):(lag[i]>=0?'LH':'LL');return{id:p.id,x:p.x,y:p.y,val:p.value,zval:z[i],lag:lag[i],li,quad:pv<.05?q:'NS',pLocal:pv}});
+ const sumRows=[{stat:'moran',value:I,expected:-1/(n-1),permMean:sI.m,permSd:sI.sd,z:sI.z,p:sI.p},{stat:'geary',value:C,expected:1,permMean:sC.m,permSd:sC.sd,z:sC.z,p:sC.p}];
+ return{I,PI,loc,tables:{sum:{rows:sumRows,cols:['stat','value','expected','permMean','permSd','z','p'],ex:'ex_sg'},det:{rows:loc,cols:['id','x','y','val','zval','lag','li','quad','pLocal'],ex:'ex_sl'}},
+  interp:()=>`Moran’s I = ${I.toFixed(4)}, p = ${sI.p.toFixed(3)} → `+t(sI.p<.05?(I>-1/(n-1)?'i_pos':'i_neg'):'i_ns'),keys:SP}}
+
+/* ---------- Network statistics ---------- */
+function network(E){const ids=[...new Set(E.flatMap(e=>[e.source,e.target]))],n=ids.length;if(n<3)throw new Error(t('small'));
+ const ix=new Map(ids.map((a,i)=>[a,i])),W=ids.map(()=>new Map());let m=0;
+ E.forEach(e=>{const a=ix.get(e.source),b=ix.get(e.target);if(a===b)return;const w=+e.weight||1;if(!W[a].has(b))m++;W[a].set(b,(W[a].get(b)||0)+w);W[b].set(a,(W[b].get(a)||0)+w)});
+ const A=W.map(s=>[...s.keys()]),bet=Array(n).fill(0),clo=Array(n).fill(0);let sumD=0,pairs=0,diam=0;
+ for(let s=0;s<n;s++){const S=[],P=A.map(()=>[]),sg=Array(n).fill(0),D=Array(n).fill(-1),Q=[s];sg[s]=1;D[s]=0;
+  while(Q.length){const v=Q.shift();S.push(v);A[v].forEach(w=>{if(D[w]<0){D[w]=D[v]+1;Q.push(w)}if(D[w]===D[v]+1){sg[w]+=sg[v];P[w].push(v)}})}
+  const dl=Array(n).fill(0);while(S.length){const w=S.pop();P[w].forEach(v=>dl[v]+=sg[v]/sg[w]*(1+dl[w]));if(w!==s)bet[w]+=dl[w]}
+  let r=0,sd=0;D.forEach(d=>{if(d>0){r++;sd+=d;diam=Math.max(diam,d)}});sumD+=sd;pairs+=r;clo[s]=sd?r/sd*r/(n-1):0}
+ let ev=Array(n).fill(1);for(let it=0;it<100;it++){const y=ev.map((_,i)=>ev[i]*0.01+[...W[i]].reduce((s,[j,w])=>s+ev[j]*w,0)),mx=Math.max(...y)||1;ev=y.map(a=>a/mx)}
+ const comp=Array(n).fill(0);let nc=0;for(let s=0;s<n;s++)if(!comp[s]){nc++;const Q=[s];comp[s]=nc;while(Q.length){const v=Q.pop();A[v].forEach(w=>{if(!comp[w]){comp[w]=nc;Q.push(w)}})}}
+ let tri=0,trp=0;const clu=A.map((nb,i)=>{let c=0;for(let a=0;a<nb.length;a++)for(let b=a+1;b<nb.length;b++)if(W[nb[a]].has(nb[b]))c++;const tp=nb.length*(nb.length-1)/2;tri+=c;trp+=tp;return tp?c/tp:0});
+ const nodes=ids.map((id,i)=>({id,deg:A[i].length,str:[...W[i].values()].reduce((a,b)=>a+b,0),clo:clo[i],bet:n>2?bet[i]/((n-1)*(n-2)):0,eig:ev[i],clu:clu[i],comp:comp[i]}));
+ const cs=Array(nc+1).fill(0);comp.forEach(c=>cs[c]++);
+ const sumRows=[['n',n],['m',m],['dens',2*m/(n*(n-1))],['avgdeg',2*m/n],['comps',nc],['large',Math.max(...cs)],['apl',pairs?sumD/pairs:0],['diam',diam],['avgclu',clu.reduce((a,b)=>a+b,0)/n],['trans',trp?tri/trp:0]].map(([stat,value])=>({stat,value}));
+ let X=ids.map((_,i)=>[Math.cos(i*2.4)*Math.sqrt(i+1),Math.sin(i*2.4)*Math.sqrt(i+1)]);
+ for(let it=0;it<300;it++){const T=.5*(1-it/300),F=X.map(()=>[0,0]);
+  for(let i=0;i<n;i++)for(let j=i+1;j<n;j++){const dx=X[i][0]-X[j][0],dy=X[i][1]-X[j][1],d=Math.hypot(dx,dy)||.01,f=1/d;F[i][0]+=dx/d*f;F[i][1]+=dy/d*f;F[j][0]-=dx/d*f;F[j][1]-=dy/d*f}
+  const edges=[];A.forEach((nb,i)=>nb.forEach(j=>{if(j>i){const dx=X[i][0]-X[j][0],dy=X[i][1]-X[j][1],d=Math.hypot(dx,dy)||.01,f=d*d;F[i][0]-=dx/d*f;F[i][1]-=dy/d*f;F[j][0]+=dx/d*f;F[j][1]+=dy/d*f}}));
+  X=X.map((p,i)=>{const l=Math.hypot(F[i][0],F[i][1])||1,s=Math.min(l,T)/l;return[p[0]+F[i][0]*s,p[1]+F[i][1]*s]})}
+ const edges=[];A.forEach((nb,i)=>nb.forEach(j=>{if(j>i)edges.push([i,j,W[i].get(j)])}));
+ return{nodes,edges,X,maxDeg:Math.max(...nodes.map(r=>r.deg))||1,tables:{sum:{rows:sumRows,cols:['stat','value'],ex:'ex_ng'},det:{rows:nodes,cols:['id','deg','str','clo','bet','eig','clu','comp'],ex:'ex_nn'}},interp:()=>'',keys:NW}}
+
+/* ---------- Chart builders ---------- */
+const ax=(s,x)=>({title:{display:!!s,text:s},grid:{color:'#E3EAE9'},...x});
+const hist=(a,nb)=>{const lo=Math.min(...a),hi=Math.max(...a),w=(hi-lo)/nb||1,c=Array(nb).fill(0);a.forEach(v=>c[Math.min(nb-1,Math.floor((v-lo)/w))]++);return{c,lo,w,labels:c.map((_,i)=>(lo+w*i).toFixed(2))}};
+function build(k){const r=res,L=r.loc,N=r.nodes;let type='scatter',datasets=[],labels,scales={x:ax(),y:ax()},indexAxis;
+ const grp=(qs,f)=>qs.map(q=>{const rs=L.filter(f(q));return{label:q,data:rs.map(o=>({x:o.zx??o.x,y:o.zy??o.y})),lbl:rs.map(o=>o.id),backgroundColor:COL[q],pointRadius:6}}).filter(d=>d.data.length);
+ const top=key=>N.slice().sort((a,b)=>b[key]-a[key]).slice(0,10);
+ if(k==='moran'){const rq=o=>o.zval>=0?(o.lag>=0?'HH':'HL'):(o.lag>=0?'LH':'LL');
+  datasets=['HH','LH','LL','HL'].map(q=>{const rs=L.filter(o=>rq(o)===q);return{label:q,data:rs.map(o=>({x:o.zval,y:o.lag})),lbl:rs.map(o=>o.id),backgroundColor:COL[q],pointRadius:5}});
+  const zs=L.map(o=>o.zval),a=Math.min(...zs),b=Math.max(...zs);datasets.push({type:'line',label:'slope = I',data:[{x:a,y:r.I*a},{x:b,y:r.I*b}],borderColor:'#10282F',pointRadius:0,borderWidth:2,noNums:true});scales={x:ax('z'),y:ax('W·z')}}
+ else if(k==='map'){const vs=L.map(o=>o.val),lo=Math.min(...vs),hi=Math.max(...vs),mix=u=>'rgb('+[47,109,181].map((c,i)=>Math.round(c+([200,85,61][i]-c)*u))+')';
+  datasets=[{label:t('c_val'),data:L.map(o=>({x:o.x,y:o.y})),lbl:L.map(o=>o.val),backgroundColor:L.map(o=>mix((o.val-lo)/(hi-lo||1))),pointRadius:7}];scales={x:ax('x'),y:ax('y')}}
+ else if(k==='lisa'){datasets=['HH','LH','LL','HL','NS'].map(q=>{const rs=L.filter(o=>o.quad===q);return{label:q,data:rs.map(o=>({x:o.x,y:o.y})),lbl:rs.map(o=>o.id),backgroundColor:COL[q],pointRadius:7}}).filter(d=>d.data.length);scales={x:ax('x'),y:ax('y')}}
+ else if(k==='hist'){const h=hist(L.map(o=>o.val),8);type='bar';labels=h.labels;datasets=[{label:t('c_val'),data:h.c,backgroundColor:'#1B6B73'}]}
+ else if(k==='perm'){const h=hist(r.PI.concat([r.I]),20),bi=Math.min(19,Math.floor((r.I-h.lo)/h.w));type='bar';labels=h.labels;datasets=[{label:'permutation',data:h.c,backgroundColor:h.c.map((_,i)=>i===bi?'#C8553D':'#9CB9BC')}]}
+ else if(k==='pie'){type='doughnut';scales=undefined;const qs=['HH','LH','LL','HL','NS'];labels=qs;datasets=[{data:qs.map(q=>L.filter(o=>o.quad===q).length),backgroundColor:qs.map(q=>COL[q])}]}
+ else if(k==='graph'){datasets=[{label:'',data:N.map((o,i)=>({x:r.X[i][0],y:r.X[i][1]})),lbl:N.map(o=>o.id),backgroundColor:N.map(o=>CP[(o.comp-1)%8]),pointRadius:N.map(o=>5+o.deg*10/r.maxDeg)}];scales={x:{display:false},y:{display:false}}}
+ else if(k==='deg'){const c=Array(r.maxDeg+1).fill(0);N.forEach(o=>c[o.deg]++);type='bar';labels=c.map((_,i)=>String(i));datasets=[{label:'n',data:c,backgroundColor:'#1B6B73'}];scales={x:ax('degree'),y:ax(t('m_n'))}}
+ else if(k==='topb'||k==='topc'){const key=k==='topb'?'bet':'clo',tp=top(key);type='bar';indexAxis='y';labels=tp.map(o=>o.id);datasets=[{label:t('c_'+key),data:tp.map(o=>o[key]),backgroundColor:k==='topb'?'#C8553D':'#2F6DB5'}]}
+ else if(k==='scat'){datasets=[{label:'',data:N.map(o=>({x:o.deg,y:o.bet})),lbl:N.map(o=>o.id),backgroundColor:'#1B6B73',pointRadius:6}];scales={x:ax('Degree'),y:ax('Betweenness')}}
+ else if(k==='radar'){type='radar';const tp=top('deg').slice(0,5),mb=Math.max(...N.map(o=>o.bet))||1;labels=['Degree','Closeness','Betweenness','Eigenvector','Clustering'];
+  datasets=tp.map((o,i)=>{const v=[o.deg/r.maxDeg,o.clo,o.bet/mb,o.eig,o.clu];return{label:o.id,data:v,lbl:v,borderColor:CP[i],backgroundColor:CP[i]+'22',pointBackgroundColor:CP[i]}});scales={r:{min:0,max:1}}}
+ return{type,datasets,labels,scales,indexAxis,title:t('ch_'+k)}}
+function mkChart(k){const b=build(k);charts[k]=new Chart($('#cv_'+k),{type:b.type,data:{labels:b.labels,datasets:b.datasets},options:{responsive:true,maintainAspectRatio:false,showNums:!!nums[k],indexAxis:b.indexAxis,scales:b.scales,plugins:{legend:{display:b.type==='doughnut'||b.datasets.length>1},title:{display:true,text:b.title,font:{size:14}}}}})}
+
+/* ---------- Rendering ---------- */
+const fmt=(c,v)=>c==='stat'?t('m_'+v):typeof v==='number'?(Number.isInteger(v)?v:+v.toFixed(4)):v;
+function tableCard(id){const tb=res.tables[id],o=open[id];
+ return`<section class="card"><div class="bar"><h2>${t(id==='sum'?'tabSum':'tabDet')}</h2><div class="row">${id==='det'?`<button class="btn" onclick="toggleT('det')">${t(o?'hide':'show')}</button>`:''}<button class="btn" onclick="dlX('${id}')">${t('xlsx')}</button></div></div>
+ ${id==='sum'&&res.interp()?`<p class="interp">${res.interp()}</p>`:''}
+ ${o?`<div class="tw"><table><thead><tr>${tb.cols.map(c=>`<th>${t('c_'+c)}</th>`).join('')}</tr></thead><tbody>${tb.rows.map(r=>`<tr>${tb.cols.map(c=>`<td>${fmt(c,r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table></div><p class="note"><b>${t('note')}</b>${t(tb.ex)}</p>`:''}</section>`}
+function renderRes(){Object.values(charts).forEach(c=>c.destroy());charts={};const R=$('#res');
+ if(!res){R.innerHTML=`<div class="empty">${t('empty')}</div>`;return}
+ const ks=res.keys;R.innerHTML=tableCard('sum')+tableCard('det')+
+  `<section class="card"><div class="bar"><h2>${t('charts')}</h2></div><div class="row">${ks.map(k=>`<button class="btn ${shown[k]?'on':''}" onclick="toggleC('${k}')">${t('ch_'+k)}</button>`).join('')}</div></section>
+  <div class="grid">${ks.filter(k=>shown[k]).map(k=>`<section class="card"><div class="bar"><div class="row"><button class="btn" onclick="toggleN('${k}')">${t(nums[k]?'nonums':'nums')}</button><button class="btn" onclick="dlP('${k}')">${t('png')}</button></div></div><div class="cv"><canvas id="cv_${k}"></canvas></div></section>`).join('')}</div>`;
+ ks.filter(k=>shown[k]).forEach(mkChart)}
+function toggleT(id){open[id]=!open[id];renderRes()}
+function toggleC(k){shown[k]=!shown[k];renderRes()}
+function toggleN(k){nums[k]=!nums[k];renderRes()}
+function dlP(k){const a=document.createElement('a');a.href=charts[k].toBase64Image('image/png',1);a.download=k+'.png';a.click()}
+function dlX(id){const tb=res.tables[id],rows=tb.rows.map(r=>{const o={};tb.cols.forEach(c=>o[t('c_'+c)]=c==='stat'?t('m_'+r[c]):r[c]);return o}),wb=XLSX.utils.book_new();
+ XLSX.utils.book_append_sheet(wb,XLSX.utils.json_to_sheet(rows),id);XLSX.writeFile(wb,`${method}_${id}.xlsx`)}
+
+/* ---------- Data, controls ---------- */
+function msg(f,err){msgF=f;const m=$('#msg');m.className=err?'err':'';m.textContent=f()}
+function setData(d){data=d;res=null;renderRes();msg(()=>`${t('loaded')}: ${d.length} ${t('rows')}`)}
+function parse(rows){if(!rows.length)throw new Error(t('bad'));const ks=Object.keys(rows[0]),f=re=>ks.find(k=>re.test(String(k).trim().toLowerCase())),num=k=>typeof rows[0][k]==='number';
+ if(method==='spatial'){let ik=f(/^(id|name|ชื่อ|รหัส)/),xk=f(/^(x|lon|lng|long)/),yk=f(/^(y|lat)/),vk=f(/^(value|val|v|var|ค่า)/);
+  if(!xk||!yk||!vk){const nk=ks.filter(num);[xk,yk,vk]=nk.slice(0,3);ik=ks.find(k=>!num(k))}
+  if(!xk||!yk||!vk)throw new Error(t('bad'));return rows.map((r,i)=>({id:String(ik?r[ik]:i+1),x:+r[xk],y:+r[yk],value:+r[vk]})).filter(r=>[r.x,r.y,r.value].every(isFinite))}
+ let sk=f(/^(source|from|src|node1|ต้นทาง)/),tk=f(/^(target|to|dst|node2|ปลายทาง)/),wk=f(/^(weight|w|น้ำหนัก)/);if(!sk||!tk){[sk,tk]=ks;if(!wk&&ks[2]&&num(ks[2]))wk=ks[2]}
+ if(!sk||!tk)throw new Error(t('bad'));return rows.filter(r=>r[sk]!=null&&r[tk]!=null).map(r=>({source:String(r[sk]),target:String(r[tk]),weight:wk&&isFinite(+r[wk])?+r[wk]:1}))}
+function upload(f){if(!f)return;const fr=new FileReader();fr.onload=e=>{try{const wb=XLSX.read(e.target.result,{type:'array'}),rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{defval:null});setData(parse(rows))}catch(x){msg(()=>t('err')+x.message,1)}};fr.readAsArrayBuffer(f)}
+function rng(s){return()=>{s|=0;s=s+0x6D2B79F5|0;let a=Math.imul(s^s>>>15,1|s);a=a+Math.imul(a^a>>>7,61|a)^a;return((a^a>>>14)>>>0)/4294967296}}
+function demo(){const r=rng(7);
+ if(method==='spatial'){const d=[];for(let i=0;i<8;i++)for(let j=0;j<8;j++){const x=99+i*.5+r()*.3,y=13+j*.5+r()*.3;d.push({id:'P'+String(d.length+1).padStart(2,'0'),x:+x.toFixed(3),y:+y.toFixed(3),value:+(10+4*Math.sin((x-99)*1.6)+3*Math.cos((y-13)*1.4)+(r()-.5)*3).toFixed(2)})}setData(d)}
+ else{const E=[],g=['A','B','C'];for(let c=0;c<3;c++)for(let i=1;i<=8;i++)for(let j=i+1;j<=8;j++)if(r()<.55)E.push({source:g[c]+i,target:g[c]+j,weight:1+Math.floor(r()*5)});
+  [['A1','B1'],['B4','C2'],['C7','A5'],['A3','C3']].forEach(([a,b])=>E.push({source:a,target:b,weight:1}));setData(E)}}
+function run(){if(!data){msg(()=>t('nodata'),1);return}msg(()=>t('busy'));
+ setTimeout(()=>{try{res=method==='spatial'?spatial(data,Math.max(1,+$('#k').value||4)):network(data);res.keys.forEach((k,i)=>{if(shown[k]===undefined)shown[k]=i<2});open={sum:true,det:false};renderRes();msg(()=>`${t('loaded')}: ${data.length} ${t('rows')}`)}catch(x){res=null;renderRes();msg(()=>t('err')+x.message,1)}},30)}
+function resetAll(){data=null;res=null;shown={};nums={};open={sum:true,det:false};$('#file').value='';$('#k').value=4;renderRes();msg(()=>'')}
+function setM(m){method=m;shown={};nums={};resetAll();applyLang()}
+function setL(l){lang=l;applyLang()}
+function applyLang(){document.documentElement.lang=lang;document.querySelectorAll('[data-t]').forEach(e=>e.textContent=t(e.dataset.t));
+ $('#hint').textContent=t(method==='spatial'?'hintS':'hintN');$('#kbox').style.display=method==='spatial'?'':'none';
+ ['spatial','network'].forEach(m=>$('#m_'+m).classList.toggle('on',m===method));['th','en'].forEach(l=>$('#l_'+l).classList.toggle('on',l===lang));
+ document.title=t('title');$('#msg').textContent=msgF();renderRes()}
+applyLang();
+</script></body></html>
